@@ -17,11 +17,7 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   ssr: false,
   spaLoadingTemplate: true,
-  hooks: {
-    "prerender:routes"({ routes }) {
-      routes.clear;
-    },
-  },
+  hooks: {},
   runtimeConfig: {
     public: {
       firebase: {
