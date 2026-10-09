@@ -29,7 +29,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
     });
   }
 
-  const isPublic = to.path === "/login" || to.path === "/register";
+  // Halaman yang boleh diakses tanpa login. "/" adalah landing page publik,
+  // "/dashboard/**" otomatis privat karena tidak ada di daftar ini.
+  const publicRoutes = ["/", "/login", "/register"];
+  const isPublic = publicRoutes.includes(to.path);
+  const isAuthPage = to.path === "/login" || to.path === "/register";
 
   // 2. Firebase user ada tapi principal backend belum ada (misal hard refresh)
   // → tarik /me; kalau gagal, bersihkan sesi Firebase & simpan alasannya.
@@ -53,8 +57,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return;
   }
 
-  // 4. Sudah login & principal valid tapi buka /login → lempar ke dashboard
-  if (isPublic) {
-    return navigateTo("/");
+  // 4. Sudah login & principal valid tapi buka /login atau /register → lempar
+  // ke dashboard. Landing page "/" tetap boleh dibuka.
+  if (isAuthPage) {
+    return navigateTo("/dashboard");
   }
 });

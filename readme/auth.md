@@ -46,6 +46,7 @@ app/
     auth.ts         # Role, UserStatus, UserPrincipal — kontrak identity module
   utils/
     firebase-error.ts   # mapping error code Firebase → pesan Indonesia
+    dashboard-nav.ts    # sumber menu sidebar (user + admin)
   plugins/
     firebase.client.ts  # init Firebase App + Auth, auth state global
   composables/
@@ -53,10 +54,29 @@ app/
     useAuth.ts          # register/login/logout/reset password
     useCurrentUser.ts   # sync ke /me, source of truth role
   middleware/
-    auth.global.ts      # route guard
+    auth.global.ts      # route guard (login + daftar route publik)
+    admin.ts            # gate role ADMIN/SUPER_ADMIN untuk /internal/**
+  layouts/
+    default.vue         # shell landing: header + main + footer
+    dashboard.vue       # shell dashboard user (dibungkus AppDashboardShell)
+    admin.vue           # shell dashboard admin (dibungkus AppDashboardShell)
+  components/
+    AppLogo.vue
+    AppDashboardShell.vue # sidebar + user menu, dipakai user & admin
+    StatCard.vue
   pages/
+    index.vue           # landing page (publik)
     login.vue
     register.vue
+    dashboard/          # area user (layout: dashboard)
+      index.vue         # ringkasan
+      payments.vue
+      ledger.vue
+      settings.vue
+    internal.vue        # parent /internal/** → set layout + middleware admin
+    internal/           # area admin (diwarisi dari internal.vue)
+      index.vue         # ringkasan admin
+      [...slug].vue     # placeholder /internal/**
 nuxt.config.ts
 ```
 
@@ -132,15 +152,31 @@ bukan bug jaringan (lihat `pages/login.vue`).
 
 ## 5. `middleware/auth.global.ts`
 
-Route publik: `/login` dan `/register`. Selain itu wajib login. Kalau ada
+Route publik: `/` (landing), `/login`, dan `/register` — daftar ini ada di
+`publicRoutes`. Selain itu wajib login (termasuk `/dashboard/**`). Kalau ada
 Firebase user tapi principal kosong (hard refresh), panggil `syncFromBackend()`;
 kalau gagal → simpan `{code, message}` ke `useState("auth-error")`,
 `auth.logout(false)`, lalu redirect `/login`. `login.vue` membaca + clear flash
 itu dan menampilkan pesan backend (khusus 401 dipetakan ke hint verifikasi
 email, karena backend sengaja generik).
 
-Untuk halaman donasi publik nanti, tambahkan path-nya ke daftar `isPublic`
-(atau buat middleware terpisah) — donasi boleh tanpa login.
+User yang sudah login dan membuka `/login`/`/register` diarahkan ke
+`/dashboard`; landing `/` tetap bisa dibuka. Untuk halaman publik baru,
+tambahkan path-nya ke `publicRoutes` (atau buat middleware terpisah) — jangan
+taruh halaman privat di daftar itu.
+
+### Area admin `/internal/**`
+
+`middleware/admin.ts` (named) memblokir siapa pun tanpa role `ADMIN` /
+`SUPER_ADMIN` dan melemparnya ke `/dashboard`. Middleware ini **tidak** dipasang
+per halaman: `pages/internal.vue` adalah parent route yang men-set
+`definePageMeta({ layout: "admin", middleware: "admin" })` sekali. Nuxt
+mengumpulkan middleware & layout dari **semua route record yang match**
+(parent + anak), jadi semua anak di `/internal/**` otomatis ikut ter-gate.
+Tambah halaman baru cukup buat file di `pages/internal/` — tanpa perlu menulis
+meta lagi.
+
+> Ini tetap UI guard; enforcement sebenarnya tetap `@PreAuthorize` di backend.
 
 ---
 

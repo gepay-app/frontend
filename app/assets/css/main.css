@@ -1,2 +1,56 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+/* Scrollbar yang lebih rapi & ikut tema. Warna memakai variabel Nuxt UI
+   (--ui-border-accented / --ui-text-dimmed) supaya otomatis berubah di
+   light/dark. Chromium & Safari pakai ::-webkit-scrollbar (membulat),
+   Firefox pakai scrollbar-width/color. */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--ui-border-accented);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ui-text-dimmed);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ui-border-accented) transparent;
+  }
+}
+
+/* Sidebar: scrollbar-nya cuma kelihatan saat area-nya di-hover/focus.
+   Rule ini menang lewat specificity dari rule global di atas. */
+.scrollbar-hover::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+
+.scrollbar-hover:hover::-webkit-scrollbar-thumb,
+.scrollbar-hover:focus-within::-webkit-scrollbar-thumb {
+  background-color: var(--ui-border-accented);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .scrollbar-hover {
+    scrollbar-color: transparent transparent;
+  }
+
+  .scrollbar-hover:hover,
+  .scrollbar-hover:focus-within {
+    scrollbar-color: var(--ui-border-accented) transparent;
+  }
+}

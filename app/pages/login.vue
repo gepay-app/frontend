@@ -77,7 +77,7 @@ async function loginGoogle() {
 async function postLoginSync() {
   try {
     await syncFromBackend();
-    await navigateTo("/");
+    await navigateTo("/dashboard");
   } catch (e) {
     await logout();
     errorMessage.value =
