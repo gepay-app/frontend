@@ -47,6 +47,48 @@ export const dashboardSections: DashboardNavSection[] = [
     ],
   },
 
+  // Area donasi creator — cuma tampil buat role CREATOR.
+  {
+    label: "Donasi",
+    roles: ["CREATOR"],
+    items: [
+      {
+        label: "Donasi masuk",
+        icon: "i-lucide-hand-coins",
+        to: "/dashboard/donations",
+      },
+      {
+        label: "Halaman donasi",
+        icon: "i-lucide-layout-template",
+        to: "/dashboard/donation-page",
+      },
+      {
+        label: "Overlay",
+        icon: "i-lucide-monitor-play",
+        to: "/dashboard/overlay",
+      },
+    ],
+  },
+
+  // Area keuangan creator — cuma tampil buat role CREATOR (UI-only guard;
+  // backend tetap yang menentukan lewat @PreAuthorize).
+  {
+    label: "Keuangan",
+    roles: ["CREATOR"],
+    items: [
+      {
+        label: "Pembayaran",
+        icon: "i-lucide-receipt",
+        to: "/dashboard/payments",
+      },
+      {
+        label: "Pencairan",
+        icon: "i-lucide-wallet",
+        to: "/dashboard/payouts",
+      },
+    ],
+  },
+
   // =========================================================================
   // CONTOH — tinggal hapus komentarnya kalau butuh. Tiga pola umum:
   // =========================================================================

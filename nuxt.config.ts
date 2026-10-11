@@ -1,14 +1,12 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 
-// `NUXT_PUBLIC_API_BASE_URL` = URL backend (mis. http://localhost:8080, boleh
-// sudah termasuk "/api/v1"). Prefix versi API disematkan di sini supaya
-// pemanggil cukup menulis path relatif ("/identities/me") dan tidak dobel.
-const apiOrigin = (
-  process.env.NUXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080"
-).replace(/\/+$/, "");
-const apiBase = apiOrigin.endsWith("/api/v1")
-  ? apiOrigin
-  : `${apiOrigin}/api/v1`;
+// `NUXT_PUBLIC_API_BASE_URL` = **origin** backend tanpa prefix versi
+// (mis. http://localhost:8080). Prefix `/api/v1` ditambahkan terpusat di
+// `useApi` supaya satu nilai origin ini bisa dipakai untuk HTTP, SSE, dan
+// WebSocket (`/ws/...`). Kalau env terlanjur menyertakan `/api/v1`, dibuang.
+const apiBase = (process.env.NUXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080")
+  .replace(/\/+$/, "")
+  .replace(/\/api\/v1$/, "");
 
 export default defineNuxtConfig({
   compatibilityDate: "2025-07-15",

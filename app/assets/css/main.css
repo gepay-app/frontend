@@ -54,3 +54,18 @@
     scrollbar-color: var(--ui-border-accented) transparent;
   }
 }
+
+/* Halaman overlay OBS (`/overlay/[key]`) menambahkan class ini ke <html> agar
+   latar benar-benar transparan — wajib untuk Browser Source OBS. Semua root
+   yang mungkin melukis background ikut dinolkan. */
+html.overlay-active,
+html.overlay-active body,
+html.overlay-active #__nuxt,
+html.overlay-active #__nuxt > div {
+  background: transparent !important;
+}
+
+html.overlay-active,
+html.overlay-active body {
+  overflow: hidden;
+}

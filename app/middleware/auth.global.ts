@@ -29,10 +29,17 @@ export default defineNuxtRouteMiddleware(async (to) => {
     });
   }
 
-  // Halaman yang boleh diakses tanpa login. "/" adalah landing page publik,
-  // "/dashboard/**" otomatis privat karena tidak ada di daftar ini.
+  // Halaman yang boleh diakses tanpa login. "/" landing publik; "/donate/{slug}"
+  // (halaman donor) dan "/overlay/{key}" (OBS) juga publik, tapi berupa route
+  // dinamis — makanya dicocokkan per prefix, bukan exact. "/dashboard/**"
+  // otomatis privat karena tidak ada di daftar.
   const publicRoutes = ["/", "/login", "/register"];
-  const isPublic = publicRoutes.includes(to.path);
+  const publicPrefixes = ["/donate", "/overlay"];
+  const isPublic =
+    publicRoutes.includes(to.path) ||
+    publicPrefixes.some(
+      (prefix) => to.path === prefix || to.path.startsWith(`${prefix}/`),
+    );
   const isAuthPage = to.path === "/login" || to.path === "/register";
 
   // 2. Firebase user ada tapi principal backend belum ada (misal hard refresh)

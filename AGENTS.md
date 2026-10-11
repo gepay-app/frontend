@@ -38,6 +38,7 @@ ke bagian di bawah, jadi **nomor bagian itu API publik — jangan di-renumber**.
 |---|---|---|---|
 | Publik | `/`, `/login`, `/register` | `default` / `false` | — |
 | Dashboard user | `/dashboard/**` | `dashboard` | login (global) |
+| Dashboard creator | `/dashboard/payouts` | `dashboard` | login + role `CREATOR` |
 | Dashboard admin | `/internal/**` | `admin` | login + role `ADMIN`/`SUPER_ADMIN` |
 
 ---
@@ -45,8 +46,8 @@ ke bagian di bawah, jadi **nomor bagian itu API publik — jangan di-renumber**.
 ## Golden rules (TL;DR)
 
 1. **Semua HTTP lewat `useApi`.** Jangan panggil `$fetch`/`fetch` langsung. Ia
-   sudah handle `baseURL`, attach `Bearer` token, unwrap `ApiResponse<T>`, dan
-   melempar `ApiError`. → §3
+   sudah handle `baseURL` (origin) + prefix `/api/v1`, attach `Bearer` token,
+   unwrap `ApiResponse<T>`, dan melempar `ApiError`. → §3
 2. **Branching error pakai `ApiError.code`** (mis. `http.unauthorized`), **jangan
    `message`** — pesan datang ter-i18n dari backend. → §3
 3. **Kontrak tipe disinkron manual.** `app/types/api.ts` & `app/types/auth.ts`
@@ -57,8 +58,9 @@ ke bagian di bawah, jadi **nomor bagian itu API publik — jangan di-renumber**.
    backend. Jangan pernah anggap ini security. → §4
 6. **Jangan simpan token manual.** Biarkan Firebase persistence
    (`browserLocalPersistence`). → §4
-7. **Route publik didaftar di `publicRoutes`** (`app/middleware/auth.global.ts`).
-   Selain daftar itu wajib login — jangan taruh halaman privat di sana. → §2/§4
+7. **Route publik didaftar di `publicRoutes`/`publicPrefixes`**
+   (`app/middleware/auth.global.ts`). Selain daftar itu wajib login — jangan
+   taruh halaman privat di sana. → §2/§4
 8. **Area admin = `pages/internal/**`.** Gate `admin` + layout `admin` diwarisi
    dari `pages/internal.vue`. Nambah halaman admin cukup bikin file di folder
    itu — tanpa menulis meta lagi. → §2/§6
@@ -122,6 +124,8 @@ bun run generate      # static generate
   `app/app.config.ts` (`ui.colors`: `primary: emerald`, `neutral: slate`).
 - **Auto-import** aktif untuk `composables/`, `utils/`, dan `components/`.
   Jangan import manual untuk hal yang sudah auto-import (mis. `useAuth`).
+- **QR QRIS**: render di klien pakai `uqr` (`renderSVG`, tanpa canvas) — jangan
+  kirim string QR ke layanan pihak ketiga.
 - Urutan plugin: plugin `.client.ts` (mis. `firebase.client.ts`) jalan sebelum
   route middleware, jadi `useNuxtApp().$firebaseAuth` sudah tersedia di
   middleware.
@@ -132,22 +136,39 @@ bun run generate      # static generate
 app/
   assets/css/main.css        # Tailwind + Nuxt UI + style scrollbar
   components/                 # auto-import; pakai prefix App* untuk global
-  composables/                # useApi, useAuth, useCurrentUser
+  composables/                # useApi, useAuth, useCurrentUser, useBalance,
+                              #   usePayments, usePayoutDestinations, useWithdrawals,
+                              #   useDonations, useDonationCheckout,
+                              #   useOverlayDisplay, useOverlayController
   layouts/                    # default, dashboard, admin
   middleware/
     auth.global.ts            # guard login + daftar route publik
     admin.ts                  # gate role untuk /internal/**
+    creator.ts                # gate role CREATOR untuk halaman creator
   pages/
     index.vue                 # landing (publik)
     login.vue, register.vue   # publik, layout: false
     dashboard/**              # area user (meta layout: dashboard)
+    dashboard/payments.vue    # pembayaran masuk (earnings)
+    dashboard/payouts.vue     # pencairan creator (middleware creator)
+    dashboard/donations.vue   # feed donasi creator (middleware creator)
+    dashboard/donation-page.vue # kelola halaman donasi + overlay key (creator)
+    dashboard/overlay.vue     # kontrol overlay OBS (middleware creator)
+    donate/[slug].vue         # halaman donasi publik (layout: false)
+    overlay/[key].vue         # display overlay OBS (publik, layout: false)
     internal.vue              # parent /internal/** (layout + middleware admin)
     internal/**               # area admin (meta diwarisi)
   plugins/firebase.client.ts  # init Firebase App + Auth
-  types/                      # api.ts, auth.ts (kontrak manual ke backend)
+  types/                      # api.ts, auth.ts, payment.ts, donation.ts (kontrak manual ke backend)
   utils/
     dashboard-nav.ts          # sumber menu sidebar (user + admin)
     firebase-error.ts         # AuthError + mapping pesan
+    format.ts                 # formatIdr / formatDateTime
+    idempotency.ts            # kunci idempotensi client-side
+    channel.ts                # turunkan bankCode dari kode channel
+    payment-status.ts         # label + warna badge status pembayaran/penarikan
+    donation-status.ts        # label + warna badge status donasi/overlay
+    overlay-ws.ts             # builder URL WebSocket overlay + envelope/parse
   app.config.ts               # warna tema Nuxt UI
   app.vue                     # UApp > NuxtLayout > NuxtPage
 nuxt.config.ts
@@ -166,29 +187,39 @@ nuxt.config.ts
   file baru di `pages/internal/`. `pages/dashboard/**` belum pakai parent (tiap
   halaman menulis `layout: "dashboard"`); boleh dirapikan ke pola yang sama
   kalau mau.
-- **Route publik**: tambah path ke `publicRoutes` di `auth.global.ts`. Halaman
-  privat jangan dimasukkan.
+- **Route publik**: `auth.global.ts` mencocokkan route publik secara **exact**
+  (`publicRoutes = ["/", "/login", "/register"]`) plus **prefix** untuk halaman
+  ber-parameter (`publicPrefixes = ["/donate", "/overlay"]`, dicocokkan
+  `path === prefix || path.startsWith(prefix + "/")`). Tambah route publik baru
+  ke salah satu daftar itu; halaman privat jangan dimasukkan.
 - **Catch-all placeholder** (`[...slug].vue`) dipakai sebagai halaman "belum
   jadi" yang rapi (mengambil judul dari `dashboard-nav.ts`). Halaman spesifik
   selalu menang atas catch-all.
 
 ## §3 Data & API
 
-- **`useApi()`** (`app/composables/useApi.ts`) mengembalikan `{ client, get, post }`:
-  - `baseURL` = `runtimeConfig.public.apiBase` (sudah termasuk `/api/v1`), jadi
-    cukup tulis path relatif: `get("/identities/me")`.
+- **`useApi()`** (`app/composables/useApi.ts`) mengembalikan
+  `{ client, get, post, put, patch, del }`:
+  - `baseURL` = `runtimeConfig.public.apiBase` = **origin** backend (tanpa
+    `/api/v1`); helper menambahkan prefix `/api/v1` terpusat, jadi cukup tulis
+    path relatif: `get("/identities/me")`. Origin yang sama dipakai SSE/WebSocket.
   - `onRequest` meng-attach `Authorization: Bearer <idToken>` (auto-refresh via
     Firebase `getIdToken()`).
   - `onResponseError` selalu melempar `ApiError` dari body `ErrorResponse`.
-  - `get`/`post` otomatis meng-unwrap `.data` dari amplop `ApiResponse<T>`.
-  - Tambah method lain (mis. `patch`) di sini, **jangan** bikin `$fetch` baru.
+  - `get`/`post`/… otomatis meng-unwrap `.data` dari amplop `ApiResponse<T>`.
+  - Tambah method lain di sini, **jangan** bikin `$fetch` baru.
 - **Envelope** (samain backend): `ApiResponse<T> = { message, data }`,
   `ErrorResponse = { code, message, errors }`. Lihat `app/types/api.ts`.
 - **`ApiError`** membawa `status`, `code`, `errors`, dan helper `is(code)`.
   Gunakan `err instanceof ApiError` + `err.code`; teks hanya untuk ditampilkan.
 - **Kontrak tipe** disinkron manual ke backend (`../backend`). Kalau backend
   ganti field → ubah `types/*` di perubahan yang sama. Backend nambah Role →
-  update `ROLES` di `app/types/auth.ts`.
+  update `ROLES` di `app/types/auth.ts`. Kontrak payment ada di
+  `app/types/payment.ts`; kontrak donation/overlay/channel di
+  `app/types/donation.ts`.
+- **Idempotensi aksi uang**: generate kunci SEKALI per aksi lewat
+  `newIdempotencyKey()` (`app/utils/idempotency.ts`), simpan, dan pakai ulang
+  saat retry — jangan regenerate tiap submit (mis. penarikan bisa dobel).
 - **State bersama**: `useState("key", () => initial)`. Contoh yang ada:
   `auth-user`, `auth-ready`, `current-user`, `auth-error`.
 - **`useCurrentUser()`** = source of truth role dari backend:
@@ -216,7 +247,7 @@ login (Firebase) → syncFromBackend() GET /me  → principal { userId, email, n
      simpan `{code, message}` ke `useState("auth-error")`, `logout(false)`, ke `/login`.
   3. Belum login + halaman privat → `/login`.
   4. Sudah login buka `/login`/`/register` → `/dashboard`.
-  5. `publicRoutes = ["/", "/login", "/register"]`.
+  5. `publicRoutes = ["/", "/login", "/register"]` (+ prefix `/donate`, `/overlay`).
 - **`admin.ts`** (named): tanpa role `ADMIN`/`SUPER_ADMIN` → redirect `/dashboard`.
   Dipasang sekali di `pages/internal.vue`.
 - **Jangan** menyimpan token ke `localStorage` manual dan jangan menganggap
@@ -241,6 +272,10 @@ login (Firebase) → syncFromBackend() GET /me  → principal { userId, email, n
   (prioritas: `ui`/`class` → config → default). Baca `.nuxt/ui/<component>.ts`
   untuk daftar slot/variant.
 - **Ikon**: `i-lucide-*`. Verifikasi nama lewat MCP `search-icons`.
+- **Pengecualian warna**: halaman overlay OBS (`/overlay/[key]`) sengaja memakai
+  warna mentah (mis. `bg-black/70`, `text-white`) demi kontras di atas gameplay +
+  latar transparan — jangan tiru pola ini di halaman aplikasi lain.
+  Lihat juga `app/assets/css/main.css` (`html.overlay-active`).
 - **Responsif**: andalkan Nuxt UI (dashboard sidebar auto jadi slideover di
   mobile). Hindari breakpoint manual kecuali perlu. Tabel lebar →
   `overflow-x-auto` + sembunyikan kolom sekunder di layar kecil.
@@ -261,6 +296,9 @@ login (Firebase) → syncFromBackend() GET /me  → principal { userId, email, n
     - **Dropdown** → item induk **tanpa** `to`, isi `children`.
     - **Satu link** → section dengan satu item.
     - **Khusus admin** → tambahkan `roles: ["ADMIN", "SUPER_ADMIN"]` di section.
+    - **Khusus creator** → section "Keuangan" dengan `roles: ["CREATOR"]`
+      (contoh: "Pembayaran" → `/dashboard/payments`, "Pencairan" →
+      `/dashboard/payouts`).
   - `buildDashboardNavItems(sections, currentPath)` dipakai shell;
     `findDashboardNav`/`findInternalNav` dipakai halaman placeholder.
   - Item induk dapat `active`/`defaultOpen` otomatis kalau salah satu anaknya
@@ -271,8 +309,9 @@ login (Firebase) → syncFromBackend() GET /me  → principal { userId, email, n
 ## §7 Konfigurasi & environment
 
 - `nuxt.config.ts`:
-  - `apiBase` = `NUXT_PUBLIC_API_BASE_URL` (default `http://localhost:8080`),
-    otomatis ditambah `/api/v1` kalau belum ada.
+  - `apiBase` = `NUXT_PUBLIC_API_BASE_URL` (default `http://localhost:8080`) =
+    **origin** tanpa `/api/v1` (prefix dibuang otomatis kalau env menyertakannya).
+    `useApi` menambahkan `/api/v1`; origin yang sama dipakai SSE & WebSocket.
   - Firebase config dibaca dari env `NUXT_PUBLIC_FIREBASE_*` ke
     `runtimeConfig.public.firebase`.
 - Baca nilai di kode lewat `useRuntimeConfig().public`. **Jangan hardcode** URL
@@ -338,13 +377,35 @@ Belum ada test runner / linter di repo. Maka:
    `UDashboardPanel`.
 2. Tambah item di `internalSections`.
 
+**Nambah halaman creator**
+1. Buat `app/pages/dashboard/<nama>.vue` dengan
+   `definePageMeta({ layout: "dashboard", middleware: "creator" })` +
+   `UDashboardPanel`.
+2. Tambah section di `dashboardSections` dengan `roles: ["CREATOR"]`.
+
+**Aksi uang (withdraw dsb.)**
+1. Generate kunci sekali via `newIdempotencyKey()`; pakai ulang saat retry.
+2. Kirim lewat `useApi`; backend memakai key itu agar tidak dobel.
+3. Konversi/format rupiah dengan `formatIdr` (`app/utils/format.ts`).
+
 **Nambah endpoint API**
 1. Pastikan DTO backend-nya; samakan tipe di `app/types/`.
 2. Panggil via `useApi().get/post` (jangan lupa unwrap sudah otomatis).
 3. Tangani error dengan `err instanceof ApiError` + `err.code`.
 
 **Nambah route publik**
-1. Tambah path ke `publicRoutes` di `app/middleware/auth.global.ts`.
+1. Tambah path ke `publicRoutes` (exact) atau `publicPrefixes` (dinamis) di
+   `app/middleware/auth.global.ts`.
+
+**Halaman donasi & overlay (kreator / publik)**
+1. Donor publik: `/donate/[slug]` → `useDonationCheckout` (page + `/channels/payin`
+   + `POST /donations` + SSE/polling). Fee hanya ditampilkan, tidak dihitung FE.
+2. Kelola halaman/overlay key: `/dashboard/donation-page` → `useDonations`.
+3. Display OBS: `/overlay/[key]` → `useOverlayDisplay` (WS `display`, `ack` +
+   `heartbeat`; latar transparan via class `overlay-active`).
+4. Kontrol OBS: `/dashboard/overlay` → `useOverlayController` (WS `control`,
+   token Firebase di query; aksi WS-first + fallback REST).
+5. Idempotensi donasi: `newIdempotencyKey()` sekali per intent (reuse saat retry).
 
 **Nambah role**
 1. Tambah di `ROLES` (`app/types/auth.ts`) **dan** di backend.

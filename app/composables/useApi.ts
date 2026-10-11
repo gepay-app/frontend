@@ -2,13 +2,15 @@
 import type { ApiResponse, ErrorResponsePayload } from "~/types/api";
 import { ApiError } from "~/types/api";
 
+// Prefix versi API ditambahkan terpusat di sini. `apiBase` = origin backend
+// (tanpa "/api/v1") supaya nilai yang sama bisa dipakai untuk SSE/WebSocket.
+const API_PREFIX = "/api/v1";
+
 export const useApi = () => {
   const { apiBase } = useRuntimeConfig().public;
   const { $firebaseAuth } = useNuxtApp();
 
   const client = $fetch.create({
-    // apiBase sudah termasuk prefix versi (".../api/v1"), jadi pemanggil cukup
-    // menulis path relatif: get("/identities/me").
     baseURL: apiBase,
     async onRequest({ options }) {
       // getIdToken() tanpa argumen = pakai token cache kalau masih valid,
@@ -36,21 +38,56 @@ export const useApi = () => {
     },
   });
 
+  // Prefix "/api/v1" ditambahkan di sini, jadi pemanggil cukup menulis path
+  // relatif: get("/identities/me").
+  const apiPath = (url: string) => `${API_PREFIX}${url}`;
+
   // Generic helper: otomatis unwrap `data` dari amplop ApiResponse<T>,
   // supaya pemanggil gak perlu `.data` berulang-ulang.
   const get = <T>(url: string, opts?: Record<string, unknown>) =>
-    client<ApiResponse<T>>(url, { method: "GET", ...opts }).then((r) => r.data);
+    client<ApiResponse<T>>(apiPath(url), { method: "GET", ...opts }).then(
+      (r) => r.data,
+    );
 
   const post = <T>(
     url: string,
     body?: unknown,
     opts?: Record<string, unknown>,
   ) =>
-    client<ApiResponse<T>>(url, {
+    client<ApiResponse<T>>(apiPath(url), {
       method: "POST",
       body: body as any,
       ...opts,
     }).then((r) => r.data);
 
-  return { client, get, post };
+  const put = <T>(
+    url: string,
+    body?: unknown,
+    opts?: Record<string, unknown>,
+  ) =>
+    client<ApiResponse<T>>(apiPath(url), {
+      method: "PUT",
+      body: body as any,
+      ...opts,
+    }).then((r) => r.data);
+
+  const patch = <T>(
+    url: string,
+    body?: unknown,
+    opts?: Record<string, unknown>,
+  ) =>
+    client<ApiResponse<T>>(apiPath(url), {
+      method: "PATCH",
+      body: body as any,
+      ...opts,
+    }).then((r) => r.data);
+
+  // Beberapa endpoint balikin `data: null` (mis. DELETE), makanya T boleh void.
+  const del = <T = void>(url: string, opts?: Record<string, unknown>) =>
+    client<ApiResponse<T>>(apiPath(url), {
+      method: "DELETE",
+      ...opts,
+    }).then((r) => r.data);
+
+  return { client, get, post, put, patch, del };
 };
